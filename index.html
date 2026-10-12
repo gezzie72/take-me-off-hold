@@ -363,7 +363,7 @@
       <h3>Sync with GitHub Gist</h3>
       <label class="field"><span>GitHub token</span>
         <input type="password" id="optToken" autocomplete="off" placeholder="ghp_… or github_pat_…">
-        <small>Needs the <b>gist</b> permission. Create one at github.com → Settings → Developer settings → Personal access tokens. Stored only on this device.</small>
+        <small>Needs the <b>gist</b> permission. <a href="https://github.com/settings/tokens/new?scopes=gist&amp;description=Take%20Me%20Off%20Hold%20sync" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600">Create a token on GitHub</a> (the gist box is pre-ticked). Stored only on this device and sent only to GitHub.</small>
       </label>
       <label class="field"><span>Gist ID</span>
         <span class="inline"><input id="optGist" autocomplete="off" placeholder="Paste an existing Gist ID"><button class="btn" data-act="create-gist">Create new</button></span>
@@ -388,6 +388,11 @@
       </div>
       <input type="file" id="importFile" accept="application/json,.json" hidden>
     </div>
+    <div class="sec">
+      <h3>My apps</h3>
+      <div class="sub">Open on any device, then use your browser menu → <b>Install</b> / <b>Add to Home screen</b>.</div>
+      <p style="margin:.6rem 0 0">🚀 <a href="https://gezzie72.github.io/apps/" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600">Open the App Launcher</a> — all your apps in one place.</p>
+    </div>
     <div class="about"><b>Take Me Off Hold</b> · <span id="ver2"></span><br>Tip: on your phone use “Add to Home Screen” to install it like an app.</div>
   </div>
 </dialog>
@@ -402,7 +407,7 @@
 </dialog>
 
 <script>
-const VERSION = 'v0.02';
+const VERSION = 'v0.03';
 const GIST_FILE = 'take-me-off-hold.json';
 const K = { data: 'tmoh.data', settings: 'tmoh.settings' };
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
