@@ -366,8 +366,8 @@
         <small>Needs the <b>gist</b> permission. <a href="https://github.com/settings/tokens/new?scopes=gist&amp;description=Take%20Me%20Off%20Hold%20sync" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600">Create a token on GitHub</a> (the gist box is pre-ticked). Stored only on this device and sent only to GitHub.</small>
       </label>
       <label class="field"><span>Gist ID</span>
-        <span class="inline"><input id="optGist" autocomplete="off" placeholder="Paste an existing Gist ID"><button class="btn" data-act="create-gist">Create new</button></span>
-        <small>Use the same Gist ID on every device you want to keep in sync.</small>
+        <span class="inline"><input id="optGist" autocomplete="off" placeholder="Optional — found automatically"><button class="btn" data-act="create-gist">Create new</button></span>
+        <small>Leave blank: the app finds your Gist from the token. Only press <b>Create new</b> on your first device.</small>
       </label>
       <div class="row"><label for="optEncrypt">Encrypt synced data<small>AES-256 encryption with your passphrase. GitHub only ever sees scrambled data.</small></label><span class="switch"><input type="checkbox" id="optEncrypt"><span></span></span></div>
       <label class="field" id="passField"><span>Encryption passphrase</span>
@@ -407,7 +407,7 @@
 </dialog>
 
 <script>
-const VERSION = 'v0.03';
+const VERSION = 'v0.04';
 const GIST_FILE = 'take-me-off-hold.json';
 const K = { data: 'tmoh.data', settings: 'tmoh.settings' };
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -712,7 +712,10 @@ document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e
 }));
 $('#optWeekends').addEventListener('change', e => { settings.weekends = e.target.checked; saveSettings(); renderCal(); });
 $('#optAuto').addEventListener('change', e => { settings.autoSync = e.target.checked; saveSettings(); });
-$('#optToken').addEventListener('change', e => { settings.token = e.target.value.trim(); saveSettings(); renderSyncPill(); });
+$('#optToken').addEventListener('change', e => {
+  settings.token = e.target.value.trim(); saveSettings(); renderSyncPill();
+  if (settings.token) syncNow(false); // finds an existing Gist by itself
+});
 $('#optGist').addEventListener('change', e => {
   // Accept a full gist URL too
   settings.gistId = e.target.value.trim().split('/').filter(Boolean).pop() || ''; settings.lastSync = null;
@@ -794,6 +797,7 @@ async function decryptJSON(env, pass) {
 // ---------- GitHub Gist sync ----------
 async function gh(path, opts = {}) {
   const r = await fetch('https://api.github.com' + path, {
+    cache: 'no-store', // a cached copy would make one device overwrite the other's latest notes
     ...opts,
     headers: { Accept: 'application/vnd.github+json', Authorization: 'Bearer ' + settings.token, 'Content-Type': 'application/json' }
   });
@@ -805,11 +809,56 @@ async function gh(path, opts = {}) {
 }
 async function payload() { return settings.encrypt ? encryptJSON(data, settings.passphrase) : { app: 'take-me-off-hold', ...data }; }
 
+// Every Gist holding this app's file, oldest first. All devices pick the oldest,
+// so two devices that each pressed "Create new" still end up on the same Gist.
+async function findGists() {
+  const found = [];
+  for (let page = 1; page <= 10; page++) {
+    const list = await gh(`/gists?per_page=100&page=${page}`);
+    list.filter(g => g.files && g.files[GIST_FILE]).forEach(g => found.push(g));
+    if (list.length < 100) break;
+  }
+  return found.sort((a, b) => a.created_at.localeCompare(b.created_at));
+}
+async function readGist(id) {
+  const g = await gh('/gists/' + id);
+  const f = g.files[GIST_FILE];
+  if (!f) return null;
+  const raw = f.truncated ? await (await fetch(f.raw_url, { cache: 'no-store' })).text() : f.content;
+  let remote = raw ? JSON.parse(raw) : null;
+  if (remote && remote.encrypted) {
+    if (!settings.passphrase) throw Object.assign(new Error('This Gist is encrypted — turn on encryption in Setup and enter the passphrase'), { locked: true });
+    remote = await decryptJSON(remote, settings.passphrase);
+  }
+  return remote && remote.notes ? remote : null;
+}
+// Point this device at the shared Gist, folding in notes from any duplicates.
+// Returns how many Gists were found and a short message ('' when nothing changed).
+async function resolveGist() {
+  const found = await findGists();
+  if (!found.length) return { count: 0, note: '' };
+  const main = found[0];
+  let merged = 0;
+  for (const g of found) {
+    if (g.id === settings.gistId && g.id === main.id) continue;
+    try { const r = await readGist(g.id); if (r) { data = merge(data, r); merged++; } }
+    catch (err) { if (err.locked) throw err; }
+  }
+  if (merged) writeLS(K.data, data);
+  const changed = settings.gistId !== main.id;
+  settings.gistId = main.id; saveSettings(); fillSetup();
+  const note = found.length > 1 ? `Found ${found.length} Gists for this app — combined them into ${main.id}.`
+    : changed ? `Connected to your existing Gist ${main.id}.` : '';
+  return { count: found.length, note };
+}
+
 async function createGist() {
   settings.token = $('#optToken').value.trim();
   if (!settings.token) { toast('Add your GitHub token first'); $('#optToken').focus(); return; }
   if (settings.encrypt && !settings.passphrase) { toast('Set a passphrase first'); return; }
   try {
+    setSync('busy', 'Checking…', 'Looking for an existing Gist…');
+    if ((await resolveGist()).count) { await syncNow(true); return; }
     setSync('busy', 'Creating…', 'Creating a private Gist…');
     const g = await gh('/gists', { method: 'POST', body: JSON.stringify({ description: 'Take Me Off Hold — app data', public: false, files: { [GIST_FILE]: { content: JSON.stringify(await payload(), null, 1) } } }) });
     settings.gistId = g.id; settings.lastSync = stamp(); saveSettings(); fillSetup();
@@ -820,33 +869,38 @@ async function createGist() {
 
 let syncTimer = null, syncing = false, syncAgain = false;
 function scheduleSync(delay = 1500) {
-  if (!settings.autoSync || !settings.token || !settings.gistId) return;
+  if (!settings.autoSync || !settings.token) return;
   clearTimeout(syncTimer); syncTimer = setTimeout(() => syncNow(false), delay);
 }
+let checkedDuplicates = false;
 async function syncNow(manual) {
-  if (!settings.token || !settings.gistId) { if (manual) { openSetup(); toast('Add a GitHub token and Gist ID to sync'); } return; }
+  if (!settings.token) { if (manual) { openSetup(); toast('Add your GitHub token to sync'); } return; }
   if (settings.encrypt && !settings.passphrase) { setSync('locked', 'Needs passphrase', 'Enter your encryption passphrase in Setup.'); return; }
   if (syncing) { syncAgain = true; return; }
   syncing = true;
   setSync('busy', 'Syncing…');
+  let note = '';
   try {
-    // 1. Pull and merge
-    const g = await gh('/gists/' + settings.gistId);
-    const f = g.files[GIST_FILE];
-    if (f) {
-      const raw = f.truncated ? await (await fetch(f.raw_url)).text() : f.content;
-      let remote = raw ? JSON.parse(raw) : null;
-      if (remote && remote.encrypted) {
-        if (!settings.passphrase) throw Object.assign(new Error('This Gist is encrypted — enter the passphrase in Setup'), { locked: true });
-        remote = await decryptJSON(remote, settings.passphrase);
+    // 0. Find the shared Gist (no ID yet, or a duplicate check once per visit / on "Sync now")
+    if (!settings.gistId || manual || !checkedDuplicates) {
+      note = (await resolveGist()).note;
+      checkedDuplicates = true;
+      if (!settings.gistId) {
+        syncing = false;
+        setSync('off', 'Not set up', 'No Gist for this app yet — press “Create new” in Setup.');
+        if (manual) { openSetup(); toast('Press “Create new” to make your sync Gist'); }
+        return;
       }
-      if (remote && remote.notes) { data = merge(data, remote); writeLS(K.data, data); }
     }
+    // 1. Pull and merge
+    const remote = await readGist(settings.gistId);
+    if (remote) { data = merge(data, remote); writeLS(K.data, data); }
     // 2. Push the merged result
     await gh('/gists/' + settings.gistId, { method: 'PATCH', body: JSON.stringify({ files: { [GIST_FILE]: { content: JSON.stringify(await payload(), null, 1) } } }) });
     settings.lastSync = stamp(); saveSettings();
     $('#syncPill').dataset.state = 'ok';
-    setSync('ok', 'Synced ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), 'Last synced ' + new Date().toLocaleString() + (settings.encrypt ? ' · encrypted' : ''));
+    setSync('ok', 'Synced ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), (note ? note + ' ' : '') + 'Last synced ' + new Date().toLocaleString() + (settings.encrypt ? ' · encrypted' : ''));
+    if (note) toast(note);
     renderSide(); renderCal();
     if (!document.activeElement || !document.activeElement.closest('#detail')) renderDetail();
     if (manual) toast('Synced');
@@ -858,7 +912,9 @@ async function syncNow(manual) {
     if (syncAgain) { syncAgain = false; scheduleSync(300); }
   }
 }
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') scheduleSync(200); });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { checkedDuplicates = false; scheduleSync(200); } });
+// Pick up changes from other devices while the app stays open
+setInterval(() => { if (document.visibilityState === 'visible' && !document.activeElement.matches('input, textarea')) scheduleSync(0); }, 60000);
 addEventListener('online', () => scheduleSync(200));
 
 // ---------- Start ----------

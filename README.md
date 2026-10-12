@@ -34,4 +34,4 @@ scrambled data that needs your passphrase.
 - **iPhone (Safari):** Share → Add to Home Screen
 - **Android (Chrome):** ⋮ menu → Add to Home screen / Install app
 
-Version: v0.03
+Version: v0.04
