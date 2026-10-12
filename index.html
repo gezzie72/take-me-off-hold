@@ -340,7 +340,7 @@
 
 <!-- Setup -->
 <dialog id="setupDlg">
-  <div class="m-head"><h2>Setup</h2><button class="icon-btn" data-act="close-dlg" aria-label="Close">✕</button></div>
+  <div class="m-head"><h2>Setup <span class="ver" id="ver3"></span></h2><button class="icon-btn" data-act="close-dlg" aria-label="Close">✕</button></div>
   <div class="m-body">
     <div class="sec">
       <h3>Theme</h3>
@@ -407,7 +407,7 @@
 </dialog>
 
 <script>
-const VERSION = 'v0.04';
+const VERSION = 'v0.05';
 const GIST_FILE = 'take-me-off-hold.json';
 const K = { data: 'tmoh.data', settings: 'tmoh.settings' };
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -617,7 +617,10 @@ function selectDay(k) {
   else setTimeout(() => $('#addText') && $('#addText').focus(), 0);
 }
 function goto(d) { view = new Date(d.getFullYear(), d.getMonth(), 1); renderAll(); }
-function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
+function toast(msg, ms = 2600) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), ms); }
+// Never fail silently: show any unexpected error
+addEventListener('error', e => toast('Error: ' + (e.message || 'something went wrong'), 6000));
+addEventListener('unhandledrejection', e => toast('Error: ' + ((e.reason && e.reason.message) || e.reason || 'something went wrong'), 6000));
 
 document.addEventListener('click', async e => {
   const el = e.target.closest('[data-act], [data-day]');
@@ -648,7 +651,13 @@ document.addEventListener('click', async e => {
     case 'setup': openSetup(); break;
     case 'search': openSearch(); break;
     case 'close-dlg': el.closest('dialog').close(); break;
-    case 'sync': syncNow(true); break;
+    case 'sync': {
+      if ($('#setupDlg').open) {
+        const tok = $('#optToken').value.trim(), pass = $('#optPass').value;
+        if (tok !== settings.token || pass !== settings.passphrase) { settings.token = tok; settings.passphrase = pass; saveSettings(); }
+      }
+      syncNow(true); break;
+    }
     case 'create-gist': createGist(); break;
     case 'disconnect':
       Object.assign(settings, { gistId: '', token: '', lastSync: null }); saveSettings(); fillSetup(); renderSyncPill();
@@ -705,7 +714,7 @@ function fillSetup() {
   $('#optAuto').checked = settings.autoSync;
   if (!$('#syncStatus').textContent) $('#syncStatus').textContent = settings.lastSync ? 'Last synced ' + new Date(settings.lastSync).toLocaleString() : (settings.gistId ? 'Not synced yet' : 'Not connected — data is saved on this device only.');
 }
-function openSetup() { fillSetup(); $('#setupDlg').showModal(); }
+function openSetup() { fillSetup(); const d = $('#setupDlg'); if (!d.open) d.showModal(); }
 document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   settings[seg.dataset.set] = b.dataset.val; saveSettings(); applyLook(); fillSetup();
@@ -796,14 +805,23 @@ async function decryptJSON(env, pass) {
 
 // ---------- GitHub Gist sync ----------
 async function gh(path, opts = {}) {
-  const r = await fetch('https://api.github.com' + path, {
+  const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 20000);
+  let r;
+  try {
+    r = await fetch('https://api.github.com' + path, {
     cache: 'no-store', // a cached copy would make one device overwrite the other's latest notes
+    signal: ctl.signal,
     ...opts,
     headers: { Accept: 'application/vnd.github+json', Authorization: 'Bearer ' + settings.token, 'Content-Type': 'application/json' }
   });
+  } catch (err) {
+    throw new Error(err.name === 'AbortError' ? 'GitHub didn’t respond — check your connection and try again' : 'Can’t reach GitHub (' + err.message + ')');
+  } finally { clearTimeout(timer); }
   if (!r.ok) {
     const msg = (await r.json().catch(() => ({}))).message || r.statusText;
-    throw new Error(r.status === 401 ? 'GitHub token was rejected' : r.status === 404 ? 'Gist not found (check the ID and token)' : `GitHub: ${msg}`);
+    throw new Error(r.status === 401 ? 'GitHub rejected the token — paste it again, or make a new one'
+      : r.status === 403 || r.status === 404 ? (path.startsWith('/gists/') ? 'Gist not found for this token — clear the Gist ID and press Sync now' : 'The token doesn’t have the “gist” permission — make a new one with gist ticked')
+      : `GitHub: ${msg}`);
   }
   return r.json();
 }
@@ -872,12 +890,15 @@ function scheduleSync(delay = 1500) {
   if (!settings.autoSync || !settings.token) return;
   clearTimeout(syncTimer); syncTimer = setTimeout(() => syncNow(false), delay);
 }
-let checkedDuplicates = false;
+let checkedDuplicates = false, syncStarted = 0, manualWaiting = false;
 async function syncNow(manual) {
-  if (!settings.token) { if (manual) { openSetup(); toast('Add your GitHub token to sync'); } return; }
-  if (settings.encrypt && !settings.passphrase) { setSync('locked', 'Needs passphrase', 'Enter your encryption passphrase in Setup.'); return; }
-  if (syncing) { syncAgain = true; return; }
-  syncing = true;
+  if (!settings.token) { if (manual) { openSetup(); setSync('off', 'Local only', 'Paste your GitHub token above, then press Sync now.'); toast('Add your GitHub token first'); $('#optToken').focus(); } return; }
+  if (settings.encrypt && !settings.passphrase) { setSync('locked', 'Needs passphrase', 'Enter your encryption passphrase in Setup.'); if (manual) toast('Enter your encryption passphrase first'); return; }
+  // A tap while a background sync runs joins it: its result is shown when it finishes
+  if (syncing && Date.now() - syncStarted < 45000) { if (manual) { manualWaiting = true; toast('Syncing…', 20000); } else syncAgain = true; return; }
+  syncing = true; syncStarted = Date.now(); manualWaiting = false;
+  if (manual) toast('Syncing…', 20000);
+  const tapped = () => manual || manualWaiting;
   setSync('busy', 'Syncing…');
   let note = '';
   try {
@@ -888,7 +909,7 @@ async function syncNow(manual) {
       if (!settings.gistId) {
         syncing = false;
         setSync('off', 'Not set up', 'No Gist for this app yet — press “Create new” in Setup.');
-        if (manual) { openSetup(); toast('Press “Create new” to make your sync Gist'); }
+        if (tapped()) { openSetup(); toast('Press “Create new” to make your sync Gist', 6000); }
         return;
       }
     }
@@ -900,13 +921,13 @@ async function syncNow(manual) {
     settings.lastSync = stamp(); saveSettings();
     $('#syncPill').dataset.state = 'ok';
     setSync('ok', 'Synced ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), (note ? note + ' ' : '') + 'Last synced ' + new Date().toLocaleString() + (settings.encrypt ? ' · encrypted' : ''));
-    if (note) toast(note);
+    if (note) toast(note, 6000);
     renderSide(); renderCal();
     if (!document.activeElement || !document.activeElement.closest('#detail')) renderDetail();
-    if (manual) toast('Synced');
+    if (tapped() && !note) toast('Synced ✓');
   } catch (err) {
     setSync(err.locked ? 'locked' : 'error', err.locked ? 'Locked' : 'Sync error', err.message);
-    if (manual) toast(err.message);
+    if (tapped()) toast(err.message, 6000);
   } finally {
     syncing = false;
     if (syncAgain) { syncAgain = false; scheduleSync(300); }
@@ -920,6 +941,7 @@ addEventListener('online', () => scheduleSync(200));
 // ---------- Start ----------
 $('#ver').textContent = VERSION;
 $('#ver2').textContent = VERSION;
+$('#ver3').textContent = VERSION;
 applyLook();
 if (!readLS(K.data)) writeLS(K.data, data);
 renderAll();
