@@ -1,0 +1,870 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F6F1E9">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Off Hold">
+<title>Take Me Off Hold</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script>
+  // Apply saved theme + text size before first paint (no flash)
+  (function () {
+    var s = {};
+    try { s = JSON.parse(localStorage.getItem('tmoh.settings') || '{}'); } catch (e) {}
+    var t = s.theme || 'auto';
+    if (t === 'auto') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+    document.documentElement.dataset.size = s.textSize || 'm';
+  })();
+</script>
+<style>
+  :root {
+    --bg: #F6F1E9; --surface: #FFFDF9; --surface-2: #F0E9DE; --ink: #1F1B16; --muted: #7A7066; --line: #E4DACB;
+    --accent: #E8590C; --accent-ink: #fff; --accent-soft: #FDE6D6;
+    --ok: #2B8A3E; --ok-soft: #DDF3E1;
+    --pin: #6741D9; --pin-soft: #ECE6FD;
+    --danger: #C92A2A;
+    --shadow: 0 1px 2px rgba(60,40,20,.06), 0 10px 30px rgba(60,40,20,.07);
+    --radius: 18px;
+    --serif: 'Fraunces', Georgia, 'Times New Roman', serif;
+    --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --top: 64px;
+    color-scheme: light;
+  }
+  :root[data-theme="dark"] {
+    --bg: #121110; --surface: #1B1A18; --surface-2: #26241F; --ink: #F2EDE6; --muted: #A39A8F; --line: #34302A;
+    --accent: #FF7A33; --accent-ink: #1A0D05; --accent-soft: #3A2416;
+    --ok: #63D57A; --ok-soft: #17301C;
+    --pin: #A78BFA; --pin-soft: #2A2340;
+    --danger: #FF6B6B;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
+    color-scheme: dark;
+  }
+  :root[data-size="s"] { font-size: 14px; }
+  :root[data-size="m"] { font-size: 16px; }
+  :root[data-size="l"] { font-size: 18px; }
+  :root[data-size="xl"] { font-size: 20px; }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.45;
+    -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent;
+  }
+  button, input, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  svg { width: 1.15em; height: 1.15em; flex: none; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+  /* ---------- Top bar ---------- */
+  .top {
+    position: sticky; top: 0; z-index: 30; height: var(--top);
+    display: flex; align-items: center; gap: .75rem; padding: 0 1.25rem;
+    padding-top: env(safe-area-inset-top);
+    background: color-mix(in srgb, var(--bg) 85%, transparent);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--line);
+  }
+  .brand { display: flex; align-items: center; gap: .65rem; margin-right: auto; min-width: 0; }
+  .logo {
+    width: 2.25rem; height: 2.25rem; border-radius: 12px; display: grid; place-items: center; flex: none;
+    background: var(--ink); color: var(--bg); font-family: var(--serif); font-weight: 700; font-size: 1.05rem;
+  }
+  .brand h1 { font-family: var(--serif); font-weight: 700; font-size: 1.2rem; margin: 0; white-space: nowrap; letter-spacing: -.01em; }
+  .ver { font-size: .7rem; color: var(--muted); border: 1px solid var(--line); border-radius: 99px; padding: .05rem .45rem; }
+  .icon-btn {
+    height: 2.5rem; min-width: 2.5rem; padding: 0 .75rem; border-radius: 12px; border: 1px solid var(--line);
+    background: var(--surface); display: inline-flex; align-items: center; justify-content: center; gap: .45rem;
+    font-weight: 600; font-size: .875rem;
+  }
+  .icon-btn:hover { border-color: var(--muted); }
+  .sync-pill { font-weight: 500; color: var(--muted); }
+  .sync-pill .dot { width: .55rem; height: .55rem; border-radius: 50%; background: var(--muted); }
+  .sync-pill[data-state="ok"] .dot { background: var(--ok); }
+  .sync-pill[data-state="busy"] .dot { background: var(--accent); animation: pulse 1s infinite; }
+  .sync-pill[data-state="error"] .dot, .sync-pill[data-state="locked"] .dot { background: var(--danger); }
+  @keyframes pulse { 50% { opacity: .3; } }
+
+  /* ---------- Layout ---------- */
+  .layout {
+    display: grid; grid-template-columns: 17.5rem minmax(0, 1fr) 22rem; gap: 1.25rem;
+    padding: 1.25rem; max-width: 1600px; margin: 0 auto; align-items: start;
+  }
+  .side, .detail { position: sticky; top: calc(var(--top) + 1.25rem); max-height: calc(100dvh - var(--top) - 2.5rem); overflow: auto; }
+
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 1rem 1.1rem; box-shadow: var(--shadow); }
+  .eyebrow { font-size: .7rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+  .big { font-family: var(--serif); font-size: 2.1rem; font-weight: 700; line-height: 1.05; margin: .3rem 0 .15rem; letter-spacing: -.02em; }
+  .sub { font-size: .85rem; color: var(--muted); }
+
+  .stats { display: grid; gap: .75rem; }
+  .card.hero { background: var(--ink); color: var(--bg); border-color: transparent; }
+  .card.hero .eyebrow, .card.hero .sub { color: color-mix(in srgb, var(--bg) 65%, transparent); }
+  .card.hero .big { color: var(--bg); }
+  .countdown { display: inline-block; margin-top: .5rem; font-size: .75rem; font-weight: 700; background: var(--accent); color: var(--accent-ink); border-radius: 99px; padding: .15rem .6rem; }
+
+  .months { margin-top: 1rem; }
+  .months-head { display: flex; align-items: baseline; justify-content: space-between; padding: 0 .25rem .5rem; }
+  .mlist { display: grid; gap: .25rem; }
+  .mbtn {
+    display: flex; align-items: center; gap: .6rem; width: 100%; text-align: left; border: 0; background: transparent;
+    padding: .55rem .7rem; border-radius: 12px; font-size: .9rem;
+  }
+  .mbtn:hover { background: var(--surface-2); }
+  .mbtn.on { background: var(--surface); box-shadow: var(--shadow); font-weight: 600; }
+  .mbtn .rd { width: .5rem; height: .5rem; border-radius: 50%; background: var(--line); flex: none; }
+  .mbtn .rd.done { background: var(--ok); }
+  .mbtn .rd.due { background: var(--accent); }
+  .mbtn .nm { flex: 1; }
+  .mbtn .ct { font-size: .75rem; font-weight: 700; min-width: 1.6rem; text-align: center; padding: .05rem .4rem; border-radius: 99px; background: var(--surface-2); color: var(--muted); }
+  .mbtn .ct.has { background: var(--accent-soft); color: var(--accent); }
+
+  /* ---------- Calendar ---------- */
+  .cal-head { display: flex; align-items: center; gap: .5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+  .cal-head h2 { font-family: var(--serif); font-size: 2.4rem; font-weight: 700; margin: 0 .5rem 0 0; letter-spacing: -.03em; line-height: 1; }
+  .cal-head h2 span { color: var(--muted); font-weight: 500; }
+  .cal-head .spacer { flex: 1; }
+  .nav { display: flex; gap: .4rem; }
+
+  .banner {
+    display: flex; align-items: center; gap: .9rem; padding: .9rem 1rem; margin-bottom: 1rem;
+    border-radius: var(--radius); background: var(--pin-soft); border: 1px solid color-mix(in srgb, var(--pin) 25%, transparent);
+  }
+  .banner .ic { width: 2.4rem; height: 2.4rem; border-radius: 12px; display: grid; place-items: center; background: var(--pin); color: #fff; flex: none; }
+  .banner .tx { flex: 1; min-width: 0; }
+  .banner b { display: block; }
+  .banner .sub { color: color-mix(in srgb, var(--ink) 65%, transparent); }
+  .banner.done { background: var(--ok-soft); border-color: color-mix(in srgb, var(--ok) 25%, transparent); }
+  .banner.done .ic { background: var(--ok); }
+  .pill-btn { border: 0; border-radius: 99px; padding: .5rem 1rem; font-weight: 700; font-size: .85rem; background: var(--ink); color: var(--bg); white-space: nowrap; }
+  .banner.done .pill-btn { background: transparent; color: var(--ok); border: 1px solid var(--ok); }
+
+  .wk { display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); gap: .6rem; margin-bottom: .5rem; }
+  .wk div { font-size: .72rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); padding-left: .25rem; }
+  .grid { display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); gap: .6rem; }
+  .cell {
+    min-height: 8.25rem; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: .6rem;
+    display: flex; flex-direction: column; gap: .4rem; cursor: pointer; transition: transform .12s, box-shadow .12s, border-color .12s; outline: none;
+  }
+  .cell:hover, .cell:focus-visible { transform: translateY(-2px); box-shadow: var(--shadow); border-color: var(--muted); }
+  .cell.out { background: transparent; border-style: dashed; cursor: default; opacity: .45; }
+  .cell.out:hover { transform: none; box-shadow: none; border-color: var(--line); }
+  .cell.sel { border-color: var(--ink); box-shadow: 0 0 0 2px var(--ink); }
+  .cell.past:not(.sel) .num { color: var(--muted); }
+  .cell-top { display: flex; align-items: center; gap: .4rem; }
+  .cell .wdn { display: none; }
+  .num { font-family: var(--serif); font-weight: 700; font-size: 1.25rem; line-height: 1; }
+  .cell.today .num { background: var(--accent); color: var(--accent-ink); border-radius: 99px; padding: .2rem .5rem; }
+  .tag { margin-left: auto; font-size: .65rem; font-weight: 700; padding: .15rem .45rem; border-radius: 99px; background: var(--pin-soft); color: var(--pin); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tag.done { background: var(--ok-soft); color: var(--ok); }
+  .chips { display: flex; flex-direction: column; gap: .25rem; min-width: 0; }
+  .chip {
+    font-size: .74rem; font-weight: 600; padding: .25rem .45rem; border-radius: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    background: var(--accent-soft); color: var(--accent); border-left: 3px solid var(--accent);
+  }
+  .chip.off { background: var(--ok-soft); color: var(--ok); border-left-color: var(--ok); text-decoration: line-through; text-decoration-thickness: 1px; }
+  .more { font-size: .72rem; color: var(--muted); font-weight: 600; padding-left: .2rem; }
+
+  /* ---------- Day detail ---------- */
+  .detail .card { padding: 1.25rem; }
+  .d-head { display: flex; align-items: flex-start; gap: .5rem; }
+  .d-head h3 { font-family: var(--serif); font-size: 1.7rem; margin: .15rem 0 0; line-height: 1.1; letter-spacing: -.02em; }
+  .d-head .close { margin-left: auto; display: none; }
+  .d-rem { margin-top: 1rem; display: flex; align-items: center; gap: .6rem; padding: .7rem .8rem; border-radius: 12px; background: var(--pin-soft); color: var(--pin); font-weight: 600; font-size: .9rem; }
+  .d-rem.done { background: var(--ok-soft); color: var(--ok); }
+  .d-rem button { margin-left: auto; border: 1px solid currentColor; background: transparent; color: inherit; border-radius: 99px; padding: .25rem .7rem; font-size: .8rem; font-weight: 700; }
+  .notes { margin-top: 1rem; display: grid; grid-template-columns: minmax(0, 1fr); gap: .5rem; }
+  .note { display: flex; align-items: center; gap: .5rem; padding: .55rem .6rem; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
+  .note .st { width: 1.6rem; height: 1.6rem; border-radius: 50%; border: 2px solid var(--accent); background: transparent; display: grid; place-items: center; color: transparent; padding: 0; flex: none; }
+  .note.off .st { background: var(--ok); border-color: var(--ok); color: #fff; }
+  .note input { flex: 1; min-width: 0; width: 100%; border: 0; background: transparent; outline: none; font-weight: 600; font-size: .92rem; padding: .2rem 0; }
+  .note.off input { text-decoration: line-through; color: var(--muted); }
+  .note .badge { font-size: .65rem; font-weight: 700; padding: .1rem .45rem; border-radius: 99px; background: var(--accent-soft); color: var(--accent); white-space: nowrap; }
+  .note.off .badge { background: var(--ok-soft); color: var(--ok); }
+  .note .del { border: 0; background: transparent; color: var(--muted); padding: .25rem; border-radius: 8px; display: grid; place-items: center; }
+  .note .del:hover { color: var(--danger); }
+  .empty { text-align: center; color: var(--muted); font-size: .88rem; padding: 1.25rem .5rem; border: 1px dashed var(--line); border-radius: 12px; }
+  .add { margin-top: 1rem; display: flex; gap: .5rem; }
+  .add input { flex: 1; min-width: 0; border: 1px solid var(--line); background: var(--bg); border-radius: 12px; padding: .7rem .85rem; outline: none; }
+  .add input:focus { border-color: var(--ink); }
+  .add button { border: 0; border-radius: 12px; padding: 0 1rem; background: var(--accent); color: var(--accent-ink); font-weight: 700; display: inline-flex; align-items: center; gap: .3rem; }
+  .hint { margin-top: .75rem; font-size: .75rem; color: var(--muted); }
+
+  .scrim { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 40; opacity: 0; pointer-events: none; transition: opacity .2s; }
+  body.sheet .scrim, body.modal .scrim { opacity: 1; pointer-events: auto; }
+
+  /* ---------- Modals ---------- */
+  dialog {
+    border: 1px solid var(--line); border-radius: 22px; padding: 0; background: var(--surface); color: var(--ink);
+    width: min(36rem, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); box-shadow: var(--shadow);
+  }
+  dialog::backdrop { background: rgba(0,0,0,.4); }
+  .m-head { display: flex; align-items: center; gap: .5rem; padding: 1.1rem 1.25rem; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--surface); z-index: 1; }
+  .m-head h2 { font-family: var(--serif); margin: 0; font-size: 1.4rem; flex: 1; }
+  .m-body { padding: 1.25rem; display: grid; gap: 1.5rem; }
+  .sec h3 { margin: 0 0 .65rem; font-size: .72rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+  .seg { display: flex; background: var(--surface-2); border-radius: 12px; padding: .25rem; gap: .25rem; }
+  .seg button { flex: 1; border: 0; background: transparent; border-radius: 9px; padding: .5rem; font-weight: 600; font-size: .88rem; color: var(--muted); }
+  .seg button.on { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+  .row { display: flex; align-items: center; gap: .75rem; padding: .5rem 0; }
+  .row label { flex: 1; font-size: .92rem; }
+  .row small, .field small { display: block; color: var(--muted); font-size: .78rem; }
+  .switch { position: relative; width: 2.75rem; height: 1.6rem; flex: none; }
+  .switch input { opacity: 0; width: 100%; height: 100%; margin: 0; position: absolute; cursor: pointer; z-index: 1; }
+  .switch span { position: absolute; inset: 0; border-radius: 99px; background: var(--line); transition: .2s; pointer-events: none; }
+  .switch span::after { content: ""; position: absolute; top: .2rem; left: .2rem; width: 1.2rem; height: 1.2rem; border-radius: 50%; background: #fff; transition: .2s; box-shadow: 0 1px 3px rgba(0,0,0,.25); }
+  .switch input:checked + span { background: var(--ok); }
+  .switch input:checked + span::after { transform: translateX(1.15rem); }
+  .field { display: grid; gap: .35rem; margin-bottom: .75rem; }
+  .field > span { font-size: .85rem; font-weight: 600; }
+  .field input { border: 1px solid var(--line); background: var(--bg); border-radius: 12px; padding: .65rem .8rem; outline: none; width: 100%; }
+  .field input:focus { border-color: var(--ink); }
+  .inline { display: flex; gap: .5rem; }
+  .inline input { flex: 1; min-width: 0; }
+  .btn { border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: .6rem .9rem; font-weight: 600; font-size: .88rem; white-space: nowrap; }
+  .btn.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .btn.danger { color: var(--danger); }
+  .btns { display: flex; flex-wrap: wrap; gap: .5rem; }
+  .sync-status { font-size: .82rem; color: var(--muted); margin-top: .5rem; }
+  .preview { margin-top: .6rem; padding: .7rem .9rem; border-radius: 12px; background: var(--surface-2); font-size: .92rem; }
+  .about { text-align: center; color: var(--muted); font-size: .8rem; padding-top: .5rem; border-top: 1px solid var(--line); }
+  .about b { font-family: var(--serif); color: var(--ink); }
+
+  .search-input { width: 100%; border: 1px solid var(--line); background: var(--bg); border-radius: 14px; padding: .8rem 1rem; outline: none; font-size: 1rem; }
+  .results { display: grid; gap: .4rem; }
+  .res { display: flex; gap: .75rem; align-items: center; text-align: left; border: 1px solid var(--line); background: var(--bg); border-radius: 12px; padding: .65rem .8rem; width: 100%; }
+  .res .when { font-size: .75rem; color: var(--muted); font-weight: 600; min-width: 6.5rem; }
+  .res .what { flex: 1; font-weight: 600; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: calc(1.25rem + env(safe-area-inset-bottom));
+    background: var(--ink); color: var(--bg); padding: .7rem 1.1rem; border-radius: 99px; font-size: .88rem; font-weight: 600;
+    z-index: 100; transition: transform .25s, opacity .25s, visibility .25s; max-width: calc(100vw - 2rem); text-align: center;
+    opacity: 0; visibility: hidden; transform: translate(-50%, 1rem);
+  }
+  .toast.show { transform: translate(-50%, 0); opacity: 1; visibility: visible; }
+
+  /* ---------- Tablet: detail becomes a side drawer ---------- */
+  @media (max-width: 1180px) {
+    .layout { grid-template-columns: 16rem minmax(0, 1fr); }
+    .detail {
+      position: fixed; top: 0; right: 0; bottom: 0; width: min(24rem, 100vw); max-height: none; z-index: 50;
+      transform: translateX(105%); transition: transform .25s ease, visibility .25s; visibility: hidden; padding: 1rem; padding-top: calc(1rem + env(safe-area-inset-top));
+    }
+    .detail .card { min-height: 100%; }
+    body.sheet .detail { transform: none; visibility: visible; }
+    .d-head .close { display: inline-flex; }
+  }
+
+  /* ---------- Phone ---------- */
+  @media (max-width: 760px) {
+    :root { --top: 56px; }
+    .top { padding: 0 .9rem; gap: .5rem; }
+    .brand h1 { font-size: 1.05rem; }
+    .ver, .sync-pill .lbl, .icon-btn .lbl { display: none; }
+    .icon-btn { padding: 0; }
+    .layout { display: block; padding: .9rem; }
+    .side { position: static; max-height: none; overflow: visible; }
+    .stats { grid-template-columns: repeat(3, minmax(9.5rem, 1fr)); overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: .25rem; margin: 0 -.9rem; padding: 0 .9rem .25rem; scrollbar-width: none; }
+    .stats::-webkit-scrollbar, .mlist::-webkit-scrollbar { display: none; }
+    .stats .card { scroll-snap-align: start; padding: .85rem .9rem; }
+    .big { font-size: 1.6rem; }
+    .months { margin: .9rem -.9rem 1rem; }
+    .months-head { display: none; }
+    .mlist { display: flex; overflow-x: auto; gap: .4rem; padding: 0 .9rem .25rem; scrollbar-width: none; }
+    .mbtn { width: auto; flex: none; border: 1px solid var(--line); background: var(--surface); padding: .45rem .75rem; }
+    .mbtn.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+    .cal-head h2 { font-size: 1.9rem; width: 100%; margin-bottom: .5rem; }
+    .cal-head .spacer { display: none; }
+    .banner { flex-wrap: wrap; }
+    .banner .pill-btn { width: 100%; }
+    .wk { display: none; }
+    .grid { display: flex; flex-direction: column; gap: .45rem; }
+    .cell { min-height: 0; flex-direction: row; align-items: center; padding: .7rem .8rem; }
+    .cell:hover { transform: none; }
+    .cell.out { display: none; }
+    .cell-top { flex-direction: column; align-items: center; gap: .1rem; width: 2.6rem; flex: none; }
+    .cell .wdn { display: block; font-size: .62rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+    .cell .tag { display: none; }
+    .chips { flex: 1; flex-direction: row; flex-wrap: wrap; }
+    .chips .chip { max-width: 100%; }
+    .cell .mtag { display: inline-block; }
+    .detail {
+      top: auto; left: 0; width: 100%; max-height: 88dvh; padding: 0;
+      transform: translateY(105%); border-radius: 22px 22px 0 0;
+    }
+    .detail .card { border-radius: 22px 22px 0 0; min-height: 0; padding-bottom: calc(1.25rem + env(safe-area-inset-bottom)); }
+    .detail .card::before { content: ""; display: block; width: 2.5rem; height: .3rem; border-radius: 99px; background: var(--line); margin: -.4rem auto .9rem; }
+    dialog { width: 100vw; max-width: 100vw; max-height: 92dvh; margin: auto 0 0; border-radius: 22px 22px 0 0; }
+  }
+  .mtag { display: none; font-size: .68rem; font-weight: 700; padding: .2rem .5rem; border-radius: 99px; background: var(--pin-soft); color: var(--pin); }
+  .mtag.done { background: var(--ok-soft); color: var(--ok); }
+  .cell .none { font-size: .78rem; color: var(--muted); }
+  @media (min-width: 761px) { .cell .none { display: none; } }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">
+    <div class="logo">H</div>
+    <h1>Take Me Off Hold</h1>
+    <span class="ver" id="ver"></span>
+  </div>
+  <button class="icon-btn sync-pill" id="syncPill" data-act="sync" title="Sync now" data-state="off"><span class="dot"></span><span class="lbl" id="syncLbl">Local only</span></button>
+  <button class="icon-btn" data-act="search" title="Search notes" aria-label="Search notes">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+  </button>
+  <button class="icon-btn" data-act="setup" title="Setup" aria-label="Setup">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+    <span class="lbl">Setup</span>
+  </button>
+</header>
+
+<main class="layout">
+  <aside class="side" id="side"></aside>
+  <section class="cal" id="cal"></section>
+  <aside class="detail" id="detail"></aside>
+</main>
+<div class="scrim" data-act="close-sheet"></div>
+<div class="toast" id="toast" role="status"></div>
+
+<!-- Setup -->
+<dialog id="setupDlg">
+  <div class="m-head"><h2>Setup</h2><button class="icon-btn" data-act="close-dlg" aria-label="Close">✕</button></div>
+  <div class="m-body">
+    <div class="sec">
+      <h3>Theme</h3>
+      <div class="seg" data-set="theme">
+        <button data-val="auto">Auto</button><button data-val="light">Light</button><button data-val="dark">Dark</button>
+      </div>
+    </div>
+    <div class="sec">
+      <h3>Text size</h3>
+      <div class="seg" data-set="textSize">
+        <button data-val="s">Small</button><button data-val="m">Medium</button><button data-val="l">Large</button><button data-val="xl">X-Large</button>
+      </div>
+      <div class="preview">ACME SUPPLIES 123456 — on hold</div>
+    </div>
+    <div class="sec">
+      <h3>Calendar</h3>
+      <div class="row"><label for="optWeekends">Show weekends<small>The original sheet only showed Monday–Friday</small></label><span class="switch"><input type="checkbox" id="optWeekends"><span></span></span></div>
+    </div>
+    <div class="sec">
+      <h3>Sync with GitHub Gist</h3>
+      <label class="field"><span>GitHub token</span>
+        <input type="password" id="optToken" autocomplete="off" placeholder="ghp_… or github_pat_…">
+        <small>Needs the <b>gist</b> permission. Create one at github.com → Settings → Developer settings → Personal access tokens. Stored only on this device.</small>
+      </label>
+      <label class="field"><span>Gist ID</span>
+        <span class="inline"><input id="optGist" autocomplete="off" placeholder="Paste an existing Gist ID"><button class="btn" data-act="create-gist">Create new</button></span>
+        <small>Use the same Gist ID on every device you want to keep in sync.</small>
+      </label>
+      <div class="row"><label for="optEncrypt">Encrypt synced data<small>AES-256 encryption with your passphrase. GitHub only ever sees scrambled data.</small></label><span class="switch"><input type="checkbox" id="optEncrypt"><span></span></span></div>
+      <label class="field" id="passField"><span>Encryption passphrase</span>
+        <input type="password" id="optPass" autocomplete="off" placeholder="Use the same passphrase on every device">
+        <small>If you lose it, the synced copy can't be recovered. Your local copy is unaffected.</small>
+      </label>
+      <div class="row"><label for="optAuto">Sync automatically<small>On open, and a moment after each change</small></label><span class="switch"><input type="checkbox" id="optAuto"><span></span></span></div>
+      <div class="btns"><button class="btn primary" data-act="sync">Sync now</button><button class="btn" data-act="disconnect">Disconnect</button></div>
+      <div class="sync-status" id="syncStatus"></div>
+    </div>
+    <div class="sec">
+      <h3>Data</h3>
+      <div class="btns">
+        <button class="btn" data-act="export-json">Back up (JSON)</button>
+        <button class="btn" data-act="import-json">Restore backup</button>
+        <button class="btn" data-act="export-csv">Export for Excel (CSV)</button>
+        <button class="btn danger" data-act="reset">Erase all</button>
+      </div>
+      <input type="file" id="importFile" accept="application/json,.json" hidden>
+    </div>
+    <div class="about"><b>Take Me Off Hold</b> · <span id="ver2"></span><br>Tip: on your phone use “Add to Home Screen” to install it like an app.</div>
+  </div>
+</dialog>
+
+<!-- Search -->
+<dialog id="searchDlg">
+  <div class="m-head"><h2>Search</h2><button class="icon-btn" data-act="close-dlg" aria-label="Close">✕</button></div>
+  <div class="m-body">
+    <input class="search-input" id="q" placeholder="Search notes, e.g. a name or reference number" autocomplete="off">
+    <div class="results" id="results"></div>
+  </div>
+</dialog>
+
+<script>
+const VERSION = 'v0.02';
+const GIST_FILE = 'take-me-off-hold.json';
+const K = { data: 'tmoh.data', settings: 'tmoh.settings' };
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+
+const $ = s => document.querySelector(s);
+const pad = n => String(n).padStart(2, '0');
+const dayKey = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const monKey = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+const fromKey = k => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d || 1); };
+const wdIndex = d => (d.getDay() + 6) % 7; // Monday = 0
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const stamp = () => new Date().toISOString();
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const today = () => { const t = new Date(); return new Date(t.getFullYear(), t.getMonth(), t.getDate()); };
+
+function readLS(key) { try { return JSON.parse(localStorage.getItem(key)); } catch { return null; } }
+function writeLS(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }
+
+// ---------- State ----------
+function emptyData() { return { schema: 1, notes: {}, reminders: {} }; }
+let data = readLS(K.data) || emptyData();
+let settings = Object.assign({ theme: 'auto', textSize: 'm', weekends: false, token: '', gistId: '', encrypt: false, passphrase: '', autoSync: true, lastSync: null }, readLS(K.settings) || {});
+let view = new Date(today().getFullYear(), today().getMonth(), 1);
+let selected = dayKey(today());
+
+const saveSettings = () => writeLS(K.settings, settings);
+function commit() { writeLS(K.data, data); renderAll(); scheduleSync(); }
+
+const liveNotes = () => Object.values(data.notes).filter(n => !n.deleted);
+const notesOn = key => liveNotes().filter(n => n.date === key).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+const notesIn = mk => liveNotes().filter(n => n.date.startsWith(mk));
+const remDone = mk => !!(data.reminders[mk] && data.reminders[mk].done);
+
+// ---------- Theme & text size ----------
+const darkMQ = matchMedia('(prefers-color-scheme: dark)');
+function applyLook() {
+  const t = settings.theme === 'auto' ? (darkMQ.matches ? 'dark' : 'light') : settings.theme;
+  document.documentElement.dataset.theme = t;
+  document.documentElement.dataset.size = settings.textSize;
+  document.querySelector('meta[name="theme-color"]').content = t === 'dark' ? '#121110' : '#F6F1E9';
+}
+darkMQ.addEventListener('change', applyLook);
+
+// ---------- Icons ----------
+const ICON = {
+  left: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m15 18-6-6 6-6"/></svg>',
+  right: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m9 18 6-6-6-6"/></svg>',
+  pin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76V6h6v4.76a2 2 0 0 0 1.11 1.79l1.78.9A2 2 0 0 1 19 15.24V17H5v-1.76a2 2 0 0 1 1.11-1.79l1.78-.9A2 2 0 0 0 9 10.76Z"/><path d="M8 6h8"/></svg>',
+  check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+  trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>',
+  plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>'
+};
+
+// ---------- Rendering ----------
+function renderAll() { renderSide(); renderCal(); renderDetail(); renderSyncPill(); }
+
+function nextReminder() {
+  const t = today();
+  return t.getDate() === 1 && !remDone(monKey(t)) ? t : new Date(t.getFullYear(), t.getMonth() + 1, 1);
+}
+
+function renderSide() {
+  const nr = nextReminder();
+  const days = Math.round((nr - today()) / 864e5);
+  const mk = monKey(view);
+  const inMonth = notesIn(mk);
+  const hold = inMonth.filter(n => n.status !== 'off').length;
+  const allHold = liveNotes().filter(n => n.status !== 'off').length;
+
+  // Plan year runs July → June, like the original workbook
+  const fyStart = view.getMonth() >= 6 ? view.getFullYear() : view.getFullYear() - 1;
+  const months = Array.from({ length: 12 }, (_, i) => new Date(fyStart, 6 + i, 1));
+  const tm = monKey(today());
+
+  $('#side').innerHTML = `
+    <div class="stats">
+      <div class="card hero">
+        <div class="eyebrow">Next reminder</div>
+        <div class="big">${nr.getDate()} ${MONTHS[nr.getMonth()].slice(0, 3)}</div>
+        <div class="sub">${DAYS[wdIndex(nr)]} · Add projects</div>
+        <span class="countdown">${days === 0 ? 'Today' : days === 1 ? 'Tomorrow' : `In ${days} days`}</span>
+      </div>
+      <div class="card">
+        <div class="eyebrow">${MONTHS[view.getMonth()]}</div>
+        <div class="big">${inMonth.length}</div>
+        <div class="sub">${inMonth.length === 1 ? 'note' : 'notes'} · ${hold} on hold</div>
+      </div>
+      <div class="card">
+        <div class="eyebrow">Still on hold</div>
+        <div class="big">${allHold}</div>
+        <div class="sub">across all months</div>
+      </div>
+    </div>
+    <nav class="months">
+      <div class="months-head"><span class="eyebrow">Plan year</span><span class="sub">Jul ${fyStart} – Jun ${fyStart + 1}</span></div>
+      <div class="mlist">
+        ${months.map(m => {
+          const k = monKey(m), c = notesIn(k).length;
+          const rd = remDone(k) ? 'done' : (k <= tm ? 'due' : '');
+          return `<button class="mbtn ${k === mk ? 'on' : ''}" data-act="goto" data-m="${k}">
+            <span class="rd ${rd}" title="${rd === 'done' ? 'Reminder done' : rd === 'due' ? 'Reminder not done' : 'Upcoming'}"></span>
+            <span class="nm">${MONTHS[m.getMonth()].slice(0, 3)} ${m.getFullYear()}</span>
+            <span class="ct ${c ? 'has' : ''}">${c}</span></button>`;
+        }).join('')}
+      </div>
+    </nav>`;
+  const on = $('#side .mbtn.on');
+  if (on && innerWidth <= 760) on.scrollIntoView({ inline: 'center', block: 'nearest' });
+}
+
+function renderCal() {
+  const cols = settings.weekends ? 7 : 5;
+  const mk = monKey(view);
+  const y = view.getFullYear(), m = view.getMonth();
+  const first = new Date(y, m, 1), last = new Date(y, m + 1, 0);
+  const start = new Date(y, m, 1 - wdIndex(first));
+  const tk = dayKey(today());
+  const done = remDone(mk);
+
+  const cells = [];
+  for (let d = new Date(start); d <= last || wdIndex(d) !== 0; d.setDate(d.getDate() + 1)) {
+    if (!settings.weekends && wdIndex(d) > 4) continue;
+    const k = dayKey(d), out = d.getMonth() !== m;
+    if (out) { cells.push(`<div class="cell out" aria-hidden="true"><div class="cell-top"><span class="num">${d.getDate()}</span></div></div>`); continue; }
+    const notes = notesOn(k);
+    const isFirst = d.getDate() === 1;
+    const cls = [k === tk && 'today', k === selected && 'sel', k < tk && 'past'].filter(Boolean).join(' ');
+    cells.push(`<div class="cell ${cls}" tabindex="0" role="button" data-day="${k}" aria-label="${DAYS[wdIndex(d)]} ${d.getDate()} ${MONTHS[m]}, ${notes.length} notes">
+      <div class="cell-top"><span class="wdn">${DAYS[wdIndex(d)].slice(0, 3)}</span><span class="num">${d.getDate()}</span>
+        ${isFirst ? `<span class="tag ${done ? 'done' : ''}">${done ? '✓ ' : ''}Add projects</span>` : ''}</div>
+      <div class="chips">
+        ${isFirst ? `<span class="mtag ${done ? 'done' : ''}">${done ? '✓ ' : ''}Add projects</span>` : ''}
+        ${notes.slice(0, 3).map(n => `<span class="chip ${n.status === 'off' ? 'off' : ''}">${esc(n.text)}</span>`).join('')}
+        ${notes.length > 3 ? `<span class="more">+${notes.length - 3} more</span>` : ''}
+        ${!notes.length && !isFirst ? '<span class="none">—</span>' : ''}
+      </div></div>`);
+  }
+
+  $('#cal').innerHTML = `
+    <div class="cal-head">
+      <h2>${MONTHS[m]} <span>${y}</span></h2>
+      <div class="spacer"></div>
+      <div class="nav">
+        <button class="icon-btn" data-act="prev" aria-label="Previous month">${ICON.left}</button>
+        <button class="icon-btn" data-act="today">Today</button>
+        <button class="icon-btn" data-act="next" aria-label="Next month">${ICON.right}</button>
+      </div>
+    </div>
+    <div class="banner ${done ? 'done' : ''}">
+      <div class="ic">${done ? ICON.check : ICON.pin}</div>
+      <div class="tx"><b>${done ? 'Projects added for ' + MONTHS[m] : 'Add projects'}</b>
+        <span class="sub">Monthly reminder · ${DAYS[wdIndex(first)]} 1 ${MONTHS[m]} ${y}</span></div>
+      <button class="pill-btn" data-act="toggle-rem" data-m="${mk}">${done ? 'Undo' : 'Mark done'}</button>
+    </div>
+    <div class="wk" style="--cols:${cols}">${DAYS.slice(0, cols).map(d => `<div>${d.slice(0, 3)}</div>`).join('')}</div>
+    <div class="grid" style="--cols:${cols}">${cells.join('')}</div>`;
+}
+
+function renderDetail() {
+  const d = fromKey(selected);
+  const notes = notesOn(selected);
+  const mk = monKey(d), isFirst = d.getDate() === 1, done = remDone(mk);
+  $('#detail').innerHTML = `<div class="card">
+    <div class="d-head">
+      <div><div class="eyebrow">${DAYS[wdIndex(d)]}</div><h3>${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}</h3></div>
+      <button class="icon-btn close" data-act="close-sheet" aria-label="Close">✕</button>
+    </div>
+    ${isFirst ? `<div class="d-rem ${done ? 'done' : ''}">${done ? ICON.check : ICON.pin}<span>${done ? 'Projects added' : 'Add projects'}</span>
+      <button data-act="toggle-rem" data-m="${mk}">${done ? 'Undo' : 'Mark done'}</button></div>` : ''}
+    <div class="notes">
+      ${notes.length ? notes.map(n => `
+        <div class="note ${n.status === 'off' ? 'off' : ''}" data-id="${n.id}">
+          <button class="st" data-act="status" title="${n.status === 'off' ? 'Put back on hold' : 'Mark as off hold'}" aria-label="Toggle status">${ICON.check}</button>
+          <input value="${esc(n.text)}" data-edit="${n.id}" aria-label="Note text">
+          <span class="badge">${n.status === 'off' ? 'Off hold' : 'On hold'}</span>
+          <button class="del" data-act="delete" title="Delete" aria-label="Delete note">${ICON.trash}</button>
+        </div>`).join('') : '<div class="empty">No notes for this day yet.</div>'}
+    </div>
+    <form class="add" id="addForm">
+      <input id="addText" placeholder="Add a note, e.g. ACME SUPPLIES 123456" autocomplete="off" enterkeyhint="done">
+      <button type="submit">${ICON.plus}<span>Add</span></button>
+    </form>
+    <div class="hint">Tap the circle to mark an item <b>off hold</b>. Click any note to edit it.</div>
+  </div>`;
+}
+
+function renderSyncPill() {
+  const pill = $('#syncPill');
+  if (!settings.token || !settings.gistId) { pill.dataset.state = 'off'; $('#syncLbl').textContent = 'Local only'; return; }
+  if (pill.dataset.state === 'busy' || pill.dataset.state === 'error' || pill.dataset.state === 'locked') return;
+  pill.dataset.state = settings.lastSync ? 'ok' : 'off';
+  $('#syncLbl').textContent = settings.lastSync ? 'Synced ' + new Date(settings.lastSync).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Not synced yet';
+}
+function setSync(state, label, detail) {
+  $('#syncPill').dataset.state = state;
+  $('#syncLbl').textContent = label;
+  $('#syncStatus').textContent = detail || label;
+}
+
+// ---------- Actions ----------
+const isOverlay = () => matchMedia('(max-width: 1180px)').matches;
+function selectDay(k) {
+  selected = k;
+  renderCal(); renderDetail();
+  if (isOverlay()) { document.body.classList.add('sheet'); }
+  else setTimeout(() => $('#addText') && $('#addText').focus(), 0);
+}
+function goto(d) { view = new Date(d.getFullYear(), d.getMonth(), 1); renderAll(); }
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
+
+document.addEventListener('click', async e => {
+  const el = e.target.closest('[data-act], [data-day]');
+  if (!el) return;
+  if (el.dataset.day && !el.dataset.act) return selectDay(el.dataset.day);
+  const id = el.closest('[data-id]') && el.closest('[data-id]').dataset.id;
+  switch (el.dataset.act) {
+    case 'prev': goto(new Date(view.getFullYear(), view.getMonth() - 1, 1)); break;
+    case 'next': goto(new Date(view.getFullYear(), view.getMonth() + 1, 1)); break;
+    case 'today': selected = dayKey(today()); goto(today()); break;
+    case 'goto': goto(fromKey(el.dataset.m)); break;
+    case 'toggle-rem': {
+      const mk = el.dataset.m, done = !remDone(mk);
+      data.reminders[mk] = { done, updatedAt: stamp() };
+      commit(); toast(done ? 'Nice — projects added for ' + MONTHS[fromKey(mk).getMonth()] : 'Reminder re-opened');
+      break;
+    }
+    case 'status': {
+      const n = data.notes[id]; n.status = n.status === 'off' ? 'hold' : 'off'; n.updatedAt = stamp();
+      commit(); toast(n.status === 'off' ? 'Taken off hold ✓' : 'Back on hold'); break;
+    }
+    case 'delete': {
+      const n = data.notes[id];
+      Object.assign(n, { deleted: true, updatedAt: stamp() }); commit();
+      toast('Note deleted'); break;
+    }
+    case 'close-sheet': document.body.classList.remove('sheet'); break;
+    case 'setup': openSetup(); break;
+    case 'search': openSearch(); break;
+    case 'close-dlg': el.closest('dialog').close(); break;
+    case 'sync': syncNow(true); break;
+    case 'create-gist': createGist(); break;
+    case 'disconnect':
+      Object.assign(settings, { gistId: '', token: '', lastSync: null }); saveSettings(); fillSetup(); renderSyncPill();
+      setSync('off', 'Local only', 'Disconnected. Your data stays on this device.'); break;
+    case 'export-json': download(`take-me-off-hold-${dayKey(today())}.json`, JSON.stringify(data, null, 2), 'application/json'); break;
+    case 'import-json': $('#importFile').click(); break;
+    case 'export-csv': exportCsv(); break;
+    case 'reset':
+      if (confirm('Erase every note and reminder on this device? If sync is on, the Gist will be overwritten too.')) {
+        const t = stamp();
+        Object.values(data.notes).forEach(n => Object.assign(n, { deleted: true, updatedAt: t }));
+        Object.keys(data.reminders).forEach(k => data.reminders[k] = { done: false, updatedAt: t });
+        commit(); toast('All data erased');
+      }
+      break;
+    case 'open-result': {
+      $('#searchDlg').close(); const d = fromKey(el.dataset.date); view = new Date(d.getFullYear(), d.getMonth(), 1); renderAll(); selectDay(el.dataset.date); break;
+    }
+  }
+});
+document.addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.dataset && e.target.dataset.day) { e.preventDefault(); selectDay(e.target.dataset.day); }
+  if (e.key === 'Escape') document.body.classList.remove('sheet');
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openSearch(); }
+});
+document.addEventListener('submit', e => {
+  if (e.target.id !== 'addForm') return;
+  e.preventDefault();
+  const text = $('#addText').value.trim();
+  if (!text) return;
+  const id = uid(), t = stamp();
+  data.notes[id] = { id, date: selected, text, status: 'hold', createdAt: t, updatedAt: t };
+  commit();
+  $('#addText').focus();
+});
+document.addEventListener('change', e => {
+  const id = e.target.dataset && e.target.dataset.edit;
+  if (!id) return;
+  const text = e.target.value.trim();
+  const n = data.notes[id];
+  if (!text) { Object.assign(n, { deleted: true, updatedAt: stamp() }); commit(); toast('Note deleted'); return; }
+  if (text !== n.text) { n.text = text; n.updatedAt = stamp(); writeLS(K.data, data); renderSide(); renderCal(); scheduleSync(); }
+});
+
+// ---------- Setup dialog ----------
+function fillSetup() {
+  document.querySelectorAll('.seg').forEach(seg => seg.querySelectorAll('button').forEach(b => b.classList.toggle('on', settings[seg.dataset.set] === b.dataset.val)));
+  $('#optWeekends').checked = settings.weekends;
+  $('#optToken').value = settings.token;
+  $('#optGist').value = settings.gistId;
+  $('#optEncrypt').checked = settings.encrypt;
+  $('#optPass').value = settings.passphrase;
+  $('#passField').style.display = settings.encrypt ? '' : 'none';
+  $('#optAuto').checked = settings.autoSync;
+  if (!$('#syncStatus').textContent) $('#syncStatus').textContent = settings.lastSync ? 'Last synced ' + new Date(settings.lastSync).toLocaleString() : (settings.gistId ? 'Not synced yet' : 'Not connected — data is saved on this device only.');
+}
+function openSetup() { fillSetup(); $('#setupDlg').showModal(); }
+document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  settings[seg.dataset.set] = b.dataset.val; saveSettings(); applyLook(); fillSetup();
+}));
+$('#optWeekends').addEventListener('change', e => { settings.weekends = e.target.checked; saveSettings(); renderCal(); });
+$('#optAuto').addEventListener('change', e => { settings.autoSync = e.target.checked; saveSettings(); });
+$('#optToken').addEventListener('change', e => { settings.token = e.target.value.trim(); saveSettings(); renderSyncPill(); });
+$('#optGist').addEventListener('change', e => {
+  // Accept a full gist URL too
+  settings.gistId = e.target.value.trim().split('/').filter(Boolean).pop() || ''; settings.lastSync = null;
+  saveSettings(); fillSetup(); renderSyncPill(); if (settings.gistId && settings.token) syncNow(true);
+});
+$('#optEncrypt').addEventListener('change', e => {
+  settings.encrypt = e.target.checked; saveSettings(); fillSetup();
+  if (settings.encrypt && !settings.passphrase) $('#optPass').focus(); else scheduleSync(0);
+});
+$('#optPass').addEventListener('change', e => { settings.passphrase = e.target.value; saveSettings(); if (settings.gistId) syncNow(true); });
+$('#importFile').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  try {
+    const incoming = JSON.parse(await f.text());
+    if (!incoming || typeof incoming.notes !== 'object') throw new Error('Not a Take Me Off Hold backup');
+    data = merge(data, incoming); commit(); toast('Backup restored');
+  } catch (err) { toast('Could not restore: ' + err.message); }
+});
+
+// ---------- Search ----------
+function openSearch() { $('#q').value = ''; renderResults(); $('#searchDlg').showModal(); $('#q').focus(); }
+function renderResults() {
+  const q = $('#q').value.trim().toLowerCase();
+  const list = liveNotes().filter(n => !q || n.text.toLowerCase().includes(q)).sort((a, b) => a.date.localeCompare(b.date));
+  $('#results').innerHTML = list.length ? list.map(n => {
+    const d = fromKey(n.date);
+    return `<button class="res" data-act="open-result" data-date="${n.date}"><span class="when">${DAYS[wdIndex(d)].slice(0, 3)} ${d.getDate()} ${MONTHS[d.getMonth()].slice(0, 3)} ${d.getFullYear()}</span>
+      <span class="what">${esc(n.text)}</span><span class="chip ${n.status === 'off' ? 'off' : ''}">${n.status === 'off' ? 'Off hold' : 'On hold'}</span></button>`;
+  }).join('') : '<div class="empty">No matching notes.</div>';
+}
+$('#q').addEventListener('input', renderResults);
+['setupDlg', 'searchDlg'].forEach(id => $('#' + id).addEventListener('click', e => { if (e.target.tagName === 'DIALOG') e.target.close(); }));
+
+// ---------- Export ----------
+function download(name, content, type) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([content], { type }));
+  a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+function exportCsv() {
+  const q = v => `"${String(v).replace(/"/g, '""')}"`;
+  const rows = [['Date', 'Day', 'Month', 'Note', 'Status']];
+  liveNotes().sort((a, b) => a.date.localeCompare(b.date)).forEach(n => {
+    const d = fromKey(n.date);
+    rows.push([n.date, DAYS[wdIndex(d)], `${MONTHS[d.getMonth()]} ${d.getFullYear()}`, n.text, n.status === 'off' ? 'Off hold' : 'On hold']);
+  });
+  download(`take-me-off-hold-${dayKey(today())}.csv`, '﻿' + rows.map(r => r.map(q).join(',')).join('\r\n'), 'text/csv');
+}
+
+// ---------- Merge (newest edit wins, per note / per month) ----------
+function merge(a, b) {
+  const out = { schema: 1, notes: { ...a.notes }, reminders: { ...a.reminders } };
+  for (const [id, n] of Object.entries(b.notes || {})) if (!out.notes[id] || n.updatedAt > out.notes[id].updatedAt) out.notes[id] = n;
+  for (const [k, r] of Object.entries(b.reminders || {})) if (!out.reminders[k] || r.updatedAt > out.reminders[k].updatedAt) out.reminders[k] = r;
+  return out;
+}
+
+// ---------- Encryption (AES-GCM 256, key from passphrase via PBKDF2) ----------
+const enc = new TextEncoder(), dec = new TextDecoder();
+const toB64 = u8 => { let s = ''; for (let i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i]); return btoa(s); };
+const fromB64 = b => Uint8Array.from(atob(b), c => c.charCodeAt(0));
+async function deriveKey(pass, salt) {
+  const base = await crypto.subtle.importKey('raw', enc.encode(pass), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: 250000, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+async function encryptJSON(obj, pass) {
+  const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await deriveKey(pass, salt);
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(JSON.stringify(obj))));
+  return { app: 'take-me-off-hold', encrypted: 'AES-GCM-256/PBKDF2-SHA256', v: 1, salt: toB64(salt), iv: toB64(iv), data: toB64(ct) };
+}
+async function decryptJSON(env, pass) {
+  const key = await deriveKey(pass, fromB64(env.salt));
+  try { return JSON.parse(dec.decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64(env.iv) }, key, fromB64(env.data)))); }
+  catch { throw Object.assign(new Error('Wrong passphrase for this Gist'), { locked: true }); }
+}
+
+// ---------- GitHub Gist sync ----------
+async function gh(path, opts = {}) {
+  const r = await fetch('https://api.github.com' + path, {
+    ...opts,
+    headers: { Accept: 'application/vnd.github+json', Authorization: 'Bearer ' + settings.token, 'Content-Type': 'application/json' }
+  });
+  if (!r.ok) {
+    const msg = (await r.json().catch(() => ({}))).message || r.statusText;
+    throw new Error(r.status === 401 ? 'GitHub token was rejected' : r.status === 404 ? 'Gist not found (check the ID and token)' : `GitHub: ${msg}`);
+  }
+  return r.json();
+}
+async function payload() { return settings.encrypt ? encryptJSON(data, settings.passphrase) : { app: 'take-me-off-hold', ...data }; }
+
+async function createGist() {
+  settings.token = $('#optToken').value.trim();
+  if (!settings.token) { toast('Add your GitHub token first'); $('#optToken').focus(); return; }
+  if (settings.encrypt && !settings.passphrase) { toast('Set a passphrase first'); return; }
+  try {
+    setSync('busy', 'Creating…', 'Creating a private Gist…');
+    const g = await gh('/gists', { method: 'POST', body: JSON.stringify({ description: 'Take Me Off Hold — app data', public: false, files: { [GIST_FILE]: { content: JSON.stringify(await payload(), null, 1) } } }) });
+    settings.gistId = g.id; settings.lastSync = stamp(); saveSettings(); fillSetup();
+    setSync('ok', 'Synced', `Created Gist ${g.id}. Paste this ID on your other devices.`);
+    renderSyncPill();
+  } catch (err) { setSync('error', 'Sync error', err.message); }
+}
+
+let syncTimer = null, syncing = false, syncAgain = false;
+function scheduleSync(delay = 1500) {
+  if (!settings.autoSync || !settings.token || !settings.gistId) return;
+  clearTimeout(syncTimer); syncTimer = setTimeout(() => syncNow(false), delay);
+}
+async function syncNow(manual) {
+  if (!settings.token || !settings.gistId) { if (manual) { openSetup(); toast('Add a GitHub token and Gist ID to sync'); } return; }
+  if (settings.encrypt && !settings.passphrase) { setSync('locked', 'Needs passphrase', 'Enter your encryption passphrase in Setup.'); return; }
+  if (syncing) { syncAgain = true; return; }
+  syncing = true;
+  setSync('busy', 'Syncing…');
+  try {
+    // 1. Pull and merge
+    const g = await gh('/gists/' + settings.gistId);
+    const f = g.files[GIST_FILE];
+    if (f) {
+      const raw = f.truncated ? await (await fetch(f.raw_url)).text() : f.content;
+      let remote = raw ? JSON.parse(raw) : null;
+      if (remote && remote.encrypted) {
+        if (!settings.passphrase) throw Object.assign(new Error('This Gist is encrypted — enter the passphrase in Setup'), { locked: true });
+        remote = await decryptJSON(remote, settings.passphrase);
+      }
+      if (remote && remote.notes) { data = merge(data, remote); writeLS(K.data, data); }
+    }
+    // 2. Push the merged result
+    await gh('/gists/' + settings.gistId, { method: 'PATCH', body: JSON.stringify({ files: { [GIST_FILE]: { content: JSON.stringify(await payload(), null, 1) } } }) });
+    settings.lastSync = stamp(); saveSettings();
+    $('#syncPill').dataset.state = 'ok';
+    setSync('ok', 'Synced ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), 'Last synced ' + new Date().toLocaleString() + (settings.encrypt ? ' · encrypted' : ''));
+    renderSide(); renderCal();
+    if (!document.activeElement || !document.activeElement.closest('#detail')) renderDetail();
+    if (manual) toast('Synced');
+  } catch (err) {
+    setSync(err.locked ? 'locked' : 'error', err.locked ? 'Locked' : 'Sync error', err.message);
+    if (manual) toast(err.message);
+  } finally {
+    syncing = false;
+    if (syncAgain) { syncAgain = false; scheduleSync(300); }
+  }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') scheduleSync(200); });
+addEventListener('online', () => scheduleSync(200));
+
+// ---------- Start ----------
+$('#ver').textContent = VERSION;
+$('#ver2').textContent = VERSION;
+applyLook();
+if (!readLS(K.data)) writeLS(K.data, data);
+renderAll();
+if (settings.autoSync) syncNow(false);
+// Offline support when installed to the home screen (only works over http/https)
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
+</body>
+</html>
