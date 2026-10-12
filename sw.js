@@ -1,6 +1,6 @@
 // Network first, falling back to the cached copy when offline.
 // GitHub API calls (sync) are never cached.
-const CACHE = 'tmoh-v0.05';
+const CACHE = 'tmoh-v0.06';
 const FILES = ['./', 'index.html', 'manifest.webmanifest', 'icon.svg', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {

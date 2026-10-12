@@ -407,7 +407,7 @@
 </dialog>
 
 <script>
-const VERSION = 'v0.05';
+const VERSION = 'v0.06';
 const GIST_FILE = 'take-me-off-hold.json';
 const K = { data: 'tmoh.data', settings: 'tmoh.settings' };
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -651,13 +651,7 @@ document.addEventListener('click', async e => {
     case 'setup': openSetup(); break;
     case 'search': openSearch(); break;
     case 'close-dlg': el.closest('dialog').close(); break;
-    case 'sync': {
-      if ($('#setupDlg').open) {
-        const tok = $('#optToken').value.trim(), pass = $('#optPass').value;
-        if (tok !== settings.token || pass !== settings.passphrase) { settings.token = tok; settings.passphrase = pass; saveSettings(); }
-      }
-      syncNow(true); break;
-    }
+    case 'sync': if ($('#setupDlg').open) readSyncFields(); syncNow(true); break;
     case 'create-gist': createGist(); break;
     case 'disconnect':
       Object.assign(settings, { gistId: '', token: '', lastSync: null }); saveSettings(); fillSetup(); renderSyncPill();
@@ -721,20 +715,29 @@ document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e
 }));
 $('#optWeekends').addEventListener('change', e => { settings.weekends = e.target.checked; saveSettings(); renderCal(); });
 $('#optAuto').addEventListener('change', e => { settings.autoSync = e.target.checked; saveSettings(); });
-$('#optToken').addEventListener('change', e => {
-  settings.token = e.target.value.trim(); saveSettings(); renderSyncPill();
+$('#optToken').addEventListener('change', () => {
+  readSyncFields(); renderSyncPill();
   if (settings.token) syncNow(false); // finds an existing Gist by itself
 });
+// Accepts a bare ID or a full gist link (https://gist.github.com/name/<id>)
+const gistIdFrom = v => { const m = String(v).match(/[0-9a-f]{20,}/i); return m ? m[0].toLowerCase() : String(v).trim(); };
+// Save the sync boxes as they are typed: iPhone Safari doesn't fire "change"
+// when a button is tapped, so values must never depend on the box losing focus.
+function readSyncFields() {
+  const tok = $('#optToken').value.trim(), gist = gistIdFrom($('#optGist').value), pass = $('#optPass').value;
+  if (gist !== settings.gistId) { settings.gistId = gist; settings.lastSync = null; checkedDuplicates = true; }
+  settings.token = tok; settings.passphrase = pass; saveSettings();
+}
+['optToken', 'optGist', 'optPass'].forEach(id => $('#' + id).addEventListener('input', () => { readSyncFields(); renderSyncPill(); }));
 $('#optGist').addEventListener('change', e => {
-  // Accept a full gist URL too
-  settings.gistId = e.target.value.trim().split('/').filter(Boolean).pop() || ''; settings.lastSync = null;
-  saveSettings(); fillSetup(); renderSyncPill(); if (settings.gistId && settings.token) syncNow(true);
+  readSyncFields(); e.target.value = settings.gistId; renderSyncPill();
+  if (settings.gistId && settings.token) syncNow(true);
 });
 $('#optEncrypt').addEventListener('change', e => {
   settings.encrypt = e.target.checked; saveSettings(); fillSetup();
   if (settings.encrypt && !settings.passphrase) $('#optPass').focus(); else scheduleSync(0);
 });
-$('#optPass').addEventListener('change', e => { settings.passphrase = e.target.value; saveSettings(); if (settings.gistId) syncNow(true); });
+$('#optPass').addEventListener('change', () => { readSyncFields(); if (settings.token) syncNow(true); });
 $('#importFile').addEventListener('change', async e => {
   const f = e.target.files[0]; e.target.value = '';
   if (!f) return;
